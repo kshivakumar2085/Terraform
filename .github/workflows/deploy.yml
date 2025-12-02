@@ -1,0 +1,60 @@
+name: Deploy Static Website
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Terraform Deploy + Upload Site
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
+
+    - name: Terraform Plan
+      working-directory: terraform
+      run: terraform plan -out=tfplan
+
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve tfplan
+
+    - name: Get Terraform Outputs
+      id: terraform
+      working-directory: terraform
+      run: |
+        echo "storage_name=$(terraform output -raw storage_account_name)" >> $GITHUB_OUTPUT
+        echo "rg_name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
+
+    - name: Upload Static Website Files
+      run: |
+        az storage blob upload-batch \
+        --account-name ${{ steps.terraform.outputs.storage_name }} \
+        --resource-group ${{ steps.terraform.outputs.rg_name }} \
+        -d '$web' \
+        -s website \
+        --overwrite
+
+    - name: Display Website URL
+      run: |
+        URL=$(az storage account show \
+          -n ${{ steps.terraform.outputs.storage_name }} \
+          -g ${{ steps.terraform.outputs.rg_name }} \
+          --query "primaryEndpoints.web" -o tsv)
+        echo "✅ Website deployed successfully!"
+        echo "📍 URL: $URL"
