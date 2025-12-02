@@ -42,3 +42,4 @@ yarn.lock
 # Temporary files
 *.tmp
 *.temp
+sp-credentials.json
